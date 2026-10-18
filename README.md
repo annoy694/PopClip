@@ -23,7 +23,8 @@ it isn't installed. The two model files (about 25 MB) download into `models/` au
 **Windows:** double-click `start.bat`. **macOS / Linux:** run `./start.sh`.
 
 The first launch creates a virtual environment and installs the dependencies (a few minutes). After that
-it opens http://127.0.0.1:8000.
+it opens the app in your browser, usually at http://127.0.0.1:8000 (the next free address if that one is
+busy). The black window shows the version and the folder it runs from; keep it open while you use PopClip.
 
 Manual setup:
 

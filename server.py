@@ -30,6 +30,7 @@ from clipper.project import MemberState, Project
 from clipper.render import render
 from clipper.video import make_browser_proxy, needs_browser_proxy
 
+VERSION = "2.1"  # shown in the page header and the start-up message
 ROOT = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("CLIPPER_WORKSPACE", ROOT / "workspace"))
 MODELS = ROOT / "models"
@@ -558,12 +559,34 @@ def key_error(_: Request, exc: KeyError):
     return JSONResponse({"detail": f"Not found: {exc}"}, status_code=404)
 
 
+def _free_port(host: str, first: int) -> int:
+    """First port from `first` that nothing is listening on (an older PopClip may still hold 8000)."""
+    import socket
+
+    for port in range(first, first + 20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex((host, port)) != 0:
+                return port
+    return first
+
+
 if __name__ == "__main__":
     import uvicorn
 
     ap = argparse.ArgumentParser(description="PopClip web app")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--open", action="store_true", help="open the app in the browser once it is running")
     args = ap.parse_args()
-    print(f"\n  PopClip running at http://{args.host}:{args.port}\n")
+    port = _free_port(args.host, args.port)
+    if port != args.port:
+        print(f"\n  Port {args.port} is busy (probably another PopClip window), using {port} instead.")
+    args.port = port
+    if args.open:
+        import webbrowser
+
+        threading.Timer(2.0, webbrowser.open, [f"http://{args.host}:{args.port}"]).start()
+    print(f"\n  PopClip {VERSION}: Fancam Clipper, Split Screen, Overlay, Caption Maker")
+    print(f"  Running from {ROOT}")
+    print(f"  Open http://{args.host}:{args.port} in your browser (keep this window open)\n")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")

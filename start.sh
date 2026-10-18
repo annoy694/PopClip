@@ -7,5 +7,4 @@ if [ ! -d .venv ]; then
   .venv/bin/python -m pip install --upgrade pip
   .venv/bin/python -m pip install -r requirements.txt
 fi
-( sleep 2; (command -v open >/dev/null && open http://127.0.0.1:8000) || (command -v xdg-open >/dev/null && xdg-open http://127.0.0.1:8000) || true ) &
-exec .venv/bin/python server.py
+exec .venv/bin/python server.py --open

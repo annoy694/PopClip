@@ -11,6 +11,5 @@ if not exist .venv (
   .venv\Scripts\python -m pip install --upgrade pip
   .venv\Scripts\python -m pip install -r requirements.txt || (pause & exit /b 1)
 )
-start "" http://127.0.0.1:8000
-.venv\Scripts\python server.py
+.venv\Scripts\python server.py --open
 pause
