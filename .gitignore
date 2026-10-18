@@ -1,0 +1,6 @@
+workspace/
+.venv/
+__pycache__/
+*.clipper.npz
+people_*.jpg
+models/*.pt

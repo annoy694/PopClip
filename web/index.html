@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PopClip</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23ff4d8d'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" id="homeLink"><span class="dot"></span>PopClip</a>
+    <span class="project-name" id="projectName"></span>
+    <span class="spacer"></span>
+    <button class="ghost" id="newVideoBtn" hidden>New video</button>
+  </header>
+
+  <!-- Upload / project list -->
+  <main id="homeView" class="home" hidden>
+    <section class="drop" id="dropZone">
+      <input type="file" id="fileInput" accept="video/*" hidden>
+      <div class="drop-inner">
+        <div class="drop-icon" aria-hidden="true">▶</div>
+        <h1>Drop a group performance video</h1>
+        <p>Stage performances, dance practices, music show clips. MP4, MOV or WebM.</p>
+        <button class="primary" id="chooseBtn">Choose video</button>
+      </div>
+      <div class="upload-progress" id="uploadProgress" hidden>
+        <div class="bar"><span id="uploadBar"></span></div>
+        <p id="uploadText">Uploading…</p>
+      </div>
+    </section>
+    <section class="recent" id="recentSection" hidden>
+      <h2>Recent videos</h2>
+      <ul id="recentList"></ul>
+    </section>
+  </main>
+
+  <!-- Analysis progress -->
+  <main id="analyzeView" class="analyze" hidden>
+    <div class="analyze-card">
+      <h1>Finding everyone in the video</h1>
+      <p class="muted">Detecting and tracking each person frame by frame. This runs once per video.</p>
+      <div class="bar big"><span id="analyzeBar"></span></div>
+      <p id="analyzeText" class="muted">Starting…</p>
+    </div>
+  </main>
+
+  <!-- Editor -->
+  <main id="editorView" class="editor" hidden>
+    <section class="player-col">
+      <div class="stage" id="stage">
+        <video id="video" playsinline preload="auto"></video>
+        <canvas id="overlay"></canvas>
+        <div class="popover" id="popover" hidden></div>
+        <div class="stage-hint" id="stageHint">Click the member you want to follow</div>
+      </div>
+      <div class="controls">
+        <button class="icon" id="playBtn" title="Play / pause (Space)">▶</button>
+        <button class="icon" id="prevBtn" title="Previous frame (←)">‹</button>
+        <button class="icon" id="nextBtn" title="Next frame (→)">›</button>
+        <span class="time" id="timeText">0:00.0 / 0:00.0</span>
+        <span class="spacer"></span>
+        <label class="toggle"><input type="checkbox" id="showBoxes" checked> Boxes</label>
+        <label class="toggle"><input type="checkbox" id="showCrop" checked> Crop</label>
+      </div>
+      <div class="timeline-wrap">
+        <canvas id="timeline" title="Coverage of the focused member — click to seek"></canvas>
+        <div class="legend">
+          <span><i class="sw tracked"></i>tracked</span>
+          <span><i class="sw unsure"></i>unsure — check these</span>
+          <span><i class="sw absent"></i>not visible</span>
+          <span><i class="sw fix"></i>your fixes</span>
+        </div>
+      </div>
+      <div class="help">
+        <b>How it works:</b> click a person and give them a name; they are tracked through the whole video.
+        Scrub through the amber parts of the timeline. If the box is on the wrong person, click the right one and
+        pick the name; if the member is hidden, click empty space and choose "not visible here".
+        Keys: <kbd>Space</kbd> play, <kbd>←</kbd><kbd>→</kbd> frame, <kbd>Shift</kbd>+arrows 1 s,
+        <kbd>I</kbd>/<kbd>O</kbd> clip in/out.
+      </div>
+    </section>
+
+    <aside class="side-col">
+      <section class="panel">
+        <h2>Members</h2>
+        <ul class="members" id="memberList"></ul>
+        <p class="muted small" id="memberHint">No members yet. Click someone in the video.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Output</h2>
+        <div class="field">
+          <span class="label">Format</span>
+          <div class="seg" data-opt="format">
+            <button data-v="vertical" class="on">Vertical 9:16<small>1080×1920</small></button>
+            <button data-v="horizontal">Horizontal 16:9<small>1920×1080</small></button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Framing</span>
+          <div class="seg" data-opt="framing">
+            <button data-v="full" class="on">Full body</button>
+            <button data-v="knees">Knees up</button>
+            <button data-v="waist">Waist up</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Camera</span>
+          <div class="seg" data-opt="smoothness">
+            <button data-v="low">Lively</button>
+            <button data-v="medium" class="on">Smooth</button>
+            <button data-v="high">Very calm</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Clip</span>
+          <div class="range-row">
+            <button class="small-btn" id="setIn" title="Set start to current time (I)">Start ⇤</button>
+            <span id="rangeText" class="range-text">whole video</span>
+            <button class="small-btn" id="setOut" title="Set end to current time (O)">⇥ End</button>
+            <button class="small-btn ghost" id="clearRange" title="Use whole video">✕</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel preview-panel">
+        <h2>Preview <span class="muted small" id="previewNote"></span></h2>
+        <div class="preview-box" id="previewBox">
+          <canvas id="preview"></canvas>
+          <p class="preview-empty" id="previewEmpty">Pick a member to see the fancam preview</p>
+        </div>
+        <button class="primary wide" id="renderBtn" disabled>Render clip</button>
+        <div class="render-progress" id="renderProgress" hidden>
+          <div class="bar"><span id="renderBar"></span></div>
+          <p class="muted small" id="renderText"></p>
+        </div>
+      </section>
+
+      <section class="panel" id="rendersPanel" hidden>
+        <h2>Rendered clips</h2>
+        <ul class="renders" id="renderList"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
