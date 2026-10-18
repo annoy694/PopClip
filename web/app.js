@@ -70,9 +70,13 @@ const frameFromTime = (t) => clamp(Math.floor(t * S.meta.fps + 1e-3), 0, S.meta.
 const member = (id) => S.members.find((m) => m.id === id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function show(view) {
-  for (const v of ['homeView', 'analyzeView', 'editorView']) $(v).hidden = v !== view;
-  $('newVideoBtn').hidden = view === 'homeView';
+const VIEWS = ['homeView', 'analyzeView', 'editorView', 'studioView', 'captionView'];
+
+function show(view, tab = 'clipper') {
+  for (const v of VIEWS) if ($(v)) $(v).hidden = v !== view;
+  $('newVideoBtn').hidden = !['analyzeView', 'editorView'].includes(view);
+  if (tab !== 'clipper') $('projectName').textContent = '';
+  for (const a of document.querySelectorAll('.tabs a')) a.classList.toggle('on', a.dataset.tab === tab);
 }
 
 // ------------------------------------------------------------------ routing
@@ -82,8 +86,12 @@ $('newVideoBtn').onclick = () => { location.hash = ''; };
 
 function route() {
   const m = location.hash.match(/^#\/p\/([0-9a-f]{10})/);
+  const tool = location.hash.match(/^#\/(split|overlay|caption)\b/);
   video.pause();
-  if (m) openProject(m[1]);
+  if (window.leaveStudio) window.leaveStudio();
+  if (tool && tool[1] === 'caption' && window.openCaption) window.openCaption();
+  else if (tool && window.openStudio) window.openStudio(tool[1]);
+  else if (m) openProject(m[1]);
   else openHome();
 }
 
@@ -957,5 +965,6 @@ function loop() {
   }
 }
 
-route();
+// Tool scripts load after this file; route once they are all in.
+document.addEventListener('DOMContentLoaded', route);
 requestAnimationFrame(loop);

@@ -156,8 +156,86 @@ kbd { background: var(--panel-2); border: 1px solid var(--line); border-radius: 
 
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2a1520; border: 1px solid var(--accent); padding: 10px 16px; border-radius: 10px; z-index: 50; max-width: 90vw; }
 
+/* ---------- tool tabs */
+.tabs { display: flex; gap: 4px; margin-left: 12px; }
+.tabs a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.tabs a:hover { color: var(--text); background: var(--panel-2); }
+.tabs a.on { color: var(--text); background: var(--panel-2); box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ---------- shared form bits */
+.num-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--muted); }
+.num-row > span:first-child { min-width: 74px; }
+.num-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.num-row input[type=number] { width: 68px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); padding: 4px 6px; font: inherit; font-size: 12px; }
+.note { margin: 6px 0 0; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.note.warn { color: var(--warn); }
+select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; font: inherit; }
+input.grow, .grow { flex: 1; min-width: 0; accent-color: var(--accent); }
+
+/* ---------- studio (split screen / overlay) */
+.studio { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; }
+.studio-main { padding: 16px 16px 24px 20px; overflow: auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.st-stage { position: relative; display: grid; place-items: center; min-height: 240px; background: #08090c; border-radius: var(--radius); padding: 10px; }
+.st-stage canvas { display: block; border-radius: 4px; background: #000; cursor: grab; touch-action: none; }
+.st-stage canvas:active { cursor: grabbing; }
+.st-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 20px; pointer-events: none; }
+.st-hint { margin: 0; }
+.st-render-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.st-out { flex: 1; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.st-render-panel .render-progress { flex-basis: 100%; margin: 0; }
+.st-result { flex-basis: 100%; display: grid; gap: 10px; justify-items: start; }
+.st-result video { width: 100%; max-height: 420px; background: #000; border-radius: 8px; }
+.st-result a.primary { text-decoration: none; }
+
+.layer-card { transition: border-color .15s; }
+.layer-card.over { border-color: var(--accent); }
+.layer-card h2 .lc-meta { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.drop.mini { padding: 22px 12px; border-width: 2px; }
+.drop.mini p { margin: 0 0 10px; }
+.file-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.file-row .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.frame-view { display: block; width: 100%; border-radius: 6px; background: #000; cursor: grab; touch-action: none; margin-bottom: 6px; }
+.lc-video { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.lc-video .label { display: block; margin: 8px 0 4px; }
+.trim-bar { position: relative; height: 22px; }
+.trim-bar input { position: absolute; inset: 0; width: 100%; margin: 0; accent-color: var(--text); background: transparent; }
+.trim-sel { position: absolute; top: 8px; height: 6px; background: var(--accent); border-radius: 3px; opacity: .55; pointer-events: none; }
+.trim-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.trim-row .lc-scrubtime { flex: 1; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lc-uploading { margin: 6px 0; }
+
+/* ---------- caption maker */
+.caption { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; }
+.cap-main { padding: 12px 16px 24px 20px; overflow: auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.cap-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cap-toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+.cap-toolbar button:disabled { opacity: .4; cursor: default; }
+.cap-stage { position: relative; display: grid; place-items: center; min-height: 320px; background: #08090c; border-radius: var(--radius); padding: 12px; }
+.cap-holder { position: relative; line-height: 0; }
+.cap-holder canvas { display: block; }
+#capOverlay { position: absolute; inset: 0; cursor: default; touch-action: none; }
+.cap-drop { width: min(560px, 100%); }
+.cap-export { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cap-export select { width: auto; flex: 1; min-width: 200px; }
+.cap-layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.cap-layers li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: var(--panel-2); cursor: pointer; border: 1px solid transparent; font-size: 13px; }
+.cap-layers li.on { border-color: var(--accent); }
+.cap-layers li .ic { width: 18px; text-align: center; color: var(--muted); }
+.cap-layers li .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-layers li button { background: none; border: 0; color: var(--muted); padding: 0 3px; }
+.cap-layers li button:hover { color: var(--text); }
+#capText { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; resize: vertical; margin-bottom: 8px; }
+.cap-toggles { display: flex; gap: 14px; margin: 8px 0; }
+.color-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--muted); }
+.color-row > span { min-width: 92px; }
+.color-row input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+.color-row input[type=text] { width: 84px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); padding: 4px 6px; font: 12px ui-monospace, monospace; }
+#capTextPanel .toggle { margin: 8px 0; }
+#capApplyAll { margin-top: 4px; }
+
 @media (max-width: 900px) {
-  .editor { grid-template-columns: 1fr; }
+  .editor, .studio, .caption { grid-template-columns: 1fr; }
+  .tabs { overflow-x: auto; }
   .side-col { border-left: 0; border-top: 1px solid var(--line); }
   .stage { max-height: none; }
   .player-col { padding: 12px 16px; }

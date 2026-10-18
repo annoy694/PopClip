@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PopClip</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23ff4d8d'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/fonts/fonts.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" id="homeLink"><span class="dot"></span>PopClip</a>
+    <a class="brand" href="#/" id="homeLink"><span class="dot"></span>PopClip</a>
+    <nav class="tabs" aria-label="Tools">
+      <a href="#/" data-tab="clipper">Fancam Clipper</a>
+      <a href="#/split" data-tab="split">Split Screen</a>
+      <a href="#/overlay" data-tab="overlay">Overlay</a>
+      <a href="#/caption" data-tab="caption">Caption Maker</a>
+    </nav>
     <span class="project-name" id="projectName"></span>
     <span class="spacer"></span>
     <button class="ghost" id="newVideoBtn" hidden>New video</button>
@@ -157,7 +164,248 @@
     </aside>
   </main>
 
+
+  <!-- Split Screen / Overlay -->
+  <main id="studioView" class="studio" hidden>
+    <section class="studio-main">
+      <div class="st-stage" id="stStage">
+        <canvas id="stCanvas"></canvas>
+        <div class="st-empty" id="stEmpty">Add a picture or video to each side on the right to start.</div>
+      </div>
+      <div class="controls">
+        <button class="icon" id="stPlay" title="Play / pause (Space)">▶</button>
+        <input type="range" id="stScrub" class="grow" min="0" max="10" step="0.001" value="0" aria-label="Preview position">
+        <span class="time" id="stTime">0:00.0 / 0:10.0</span>
+        <label class="toggle" title="Hear the preview with each layer's sound setting"><input type="checkbox" id="stSound"> Sound</label>
+      </div>
+      <p class="muted small st-hint" id="stHint"></p>
+      <section class="panel st-render-panel">
+        <div class="st-out" id="stOutInfo"></div>
+        <button class="primary" id="stRender" disabled>Render MP4</button>
+        <div class="render-progress" id="stProgress" hidden>
+          <div class="bar"><span id="stBar"></span></div>
+          <p class="muted small" id="stProgText"></p>
+        </div>
+        <div class="st-result" id="stResult" hidden>
+          <video id="stResultVideo" controls playsinline></video>
+          <a class="primary" id="stDownload" href="#">Download MP4</a>
+        </div>
+      </section>
+    </section>
+    <aside class="side-col">
+      <section class="panel">
+        <h2>Output</h2>
+        <div class="field">
+          <span class="label">Shape</span>
+          <div class="seg grid3" id="stShape">
+            <button data-v="16:9">16:9<small>1920×1080</small></button>
+            <button data-v="9:16">9:16<small>1080×1920</small></button>
+            <button data-v="1:1">1:1<small>1080×1080</small></button>
+            <button data-v="4:5">4:5<small>1080×1350</small></button>
+            <button data-v="21:9">21:9<small>2560×1080</small></button>
+            <button data-v="custom">Custom<small id="stCustomLabel">any size</small></button>
+          </div>
+        </div>
+        <div class="field" id="stCustom" hidden>
+          <div class="num-row"><span>Width</span><input type="range" id="stW" min="320" max="3840" step="2"><input type="number" id="stWn" min="320" max="3840" step="2"><span>px</span></div>
+          <div class="num-row"><span>Height</span><input type="range" id="stH" min="320" max="3840" step="2"><input type="number" id="stHn" min="320" max="3840" step="2"><span>px</span></div>
+        </div>
+        <div class="field">
+          <span class="label">Length</span>
+          <div class="seg" id="stDurMode">
+            <button data-v="auto">Match shortest clip</button>
+            <button data-v="manual">Set manually</button>
+          </div>
+          <div class="num-row" id="stDurRow"><input type="range" id="stDur" min="1" max="120" step="0.5"><input type="number" id="stDurN" min="1" max="120" step="0.5"><span>s</span></div>
+          <p class="note" id="stDurNote"></p>
+        </div>
+      </section>
+      <section class="panel" id="stSeamPanel">
+        <h2>Middle edge</h2>
+        <div class="field">
+          <span class="label">Blend width</span>
+          <div class="num-row"><input type="range" id="stBlend" min="0" step="1"><input type="number" id="stBlendN" min="0" step="1"><span>px</span></div>
+          <p class="note">0 gives a hard edge. The blend fades transparency, it never blurs the footage.</p>
+        </div>
+        <div class="field">
+          <span class="label">Fade direction</span>
+          <div class="seg" id="stFade">
+            <button data-v="both">Both<small>cross-fade</small></button>
+            <button data-v="left">Left fades<small>over the right</small></button>
+            <button data-v="right">Right fades<small>over the left</small></button>
+          </div>
+        </div>
+      </section>
+      <section class="panel" id="stTopPanel">
+        <h2>Top layer</h2>
+        <div class="field">
+          <span class="label">Opacity</span>
+          <div class="num-row"><input type="range" id="stOpacity" min="0" max="100" step="1"><input type="number" id="stOpacityN" min="0" max="100" step="1"><span>%</span></div>
+        </div>
+        <div class="field">
+          <span class="label">Blend mode</span>
+          <select id="stMode">
+            <option value="normal">Normal (transparency)</option>
+            <option value="screen">Screen (lighten, glowy)</option>
+            <option value="lighten">Lighten</option>
+            <option value="add">Add (bright light)</option>
+            <option value="overlay">Overlay (contrast)</option>
+            <option value="multiply">Multiply (darken)</option>
+            <option value="darken">Darken</option>
+            <option value="difference">Difference</option>
+          </select>
+        </div>
+        <button class="small-btn" id="stSwap" title="Put the top layer at the bottom and the other way round">⇅ Swap layers</button>
+      </section>
+      <section class="panel layer-card" id="stLayer0"></section>
+      <section class="panel layer-card" id="stLayer1"></section>
+    </aside>
+  </main>
+
+
+  <!-- Caption Maker -->
+  <main id="captionView" class="caption" hidden>
+    <section class="cap-main">
+      <div class="cap-toolbar">
+        <button class="small-btn" id="capUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
+        <button class="small-btn" id="capRedo" title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
+        <span class="sep"></span>
+        <button class="small-btn" id="capAddText" title="Add a text box">＋ Text</button>
+        <button class="small-btn" id="capAddBlur" title="Add a blur region">＋ Blur</button>
+        <span class="sep"></span>
+        <button class="small-btn" id="capDup" title="Duplicate (Ctrl+D)">⧉ Duplicate</button>
+        <button class="small-btn" id="capFwd" title="Bring forward">▲ Forward</button>
+        <button class="small-btn" id="capBack" title="Send backward">▼ Back</button>
+        <button class="small-btn ghost" id="capDel" title="Delete (Del)">✕ Delete</button>
+      </div>
+      <div class="cap-stage" id="capStage">
+        <div class="cap-holder" id="capHolder" hidden>
+          <canvas id="capCanvas"></canvas>
+          <canvas id="capOverlay"></canvas>
+        </div>
+        <div class="drop cap-drop" id="capDrop">
+          <div class="drop-icon" aria-hidden="true">T</div>
+          <h1>Drop a picture to caption</h1>
+          <p>PNG, JPG or WebP. Everything happens in your browser.</p>
+          <button class="primary" id="capChoose">Choose picture</button>
+        </div>
+      </div>
+      <p class="muted small">Drag items to move them (they snap to the centre and to each other), drag the pink handle to resize. Arrow keys nudge, Del deletes, Ctrl+D duplicates.</p>
+      <section class="panel cap-export">
+        <span class="label">Export size</span>
+        <select id="capExportSize"></select>
+        <button class="primary" id="capExport" disabled>Download PNG</button>
+      </section>
+    </section>
+    <aside class="side-col">
+      <section class="panel">
+        <h2>Picture</h2>
+        <div class="file-row"><span class="fname" id="capName">No picture yet</span><button class="small-btn" id="capReplace">Replace</button></div>
+        <p class="note" id="capDims"></p>
+      </section>
+      <section class="panel">
+        <h2>Layers <span class="muted small">top first</span></h2>
+        <ul class="cap-layers" id="capLayers"></ul>
+      </section>
+      <section class="panel" id="capTextPanel" hidden>
+        <h2>Text</h2>
+        <textarea id="capText" rows="3" spellcheck="false" aria-label="Caption text"></textarea>
+        <div class="field">
+          <span class="label">Font</span>
+          <select id="capFont"></select>
+        </div>
+        <div class="num-row"><span>Size</span><input type="range" id="capSize" min="8" max="400" step="1"><input type="number" id="capSizeN" min="8" max="400" step="1"><span>px</span></div>
+        <div class="num-row"><span>Box width</span><input type="range" id="capWidth" min="5" max="100" step="1"><input type="number" id="capWidthN" min="5" max="100" step="1"><span>%</span></div>
+        <div class="field">
+          <span class="label">Alignment</span>
+          <div class="seg" id="capAlign"><button data-v="left">Left</button><button data-v="center">Centre</button><button data-v="right">Right</button></div>
+        </div>
+        <div class="cap-toggles">
+          <label class="toggle"><input type="checkbox" id="capBold"> Bold</label>
+          <label class="toggle"><input type="checkbox" id="capItalic"> Italic</label>
+          <label class="toggle"><input type="checkbox" id="capUpper"> Uppercase</label>
+        </div>
+        <div class="color-row"><span>Text colour</span><input type="color" id="capColor"><input type="text" id="capColorHex" maxlength="7" spellcheck="false"></div>
+        <div class="color-row"><span>Outline colour</span><input type="color" id="capOutline"><input type="text" id="capOutlineHex" maxlength="7" spellcheck="false"></div>
+        <div class="num-row"><span>Outline</span><input type="range" id="capOutlineW" min="0" max="20" step="0.5"><input type="number" id="capOutlineWN" min="0" max="20" step="0.5"><span>px</span></div>
+        <div class="num-row"><span>Line height</span><input type="range" id="capLine" min="0.8" max="2.5" step="0.05"><input type="number" id="capLineN" min="0.8" max="2.5" step="0.05"><span>×</span></div>
+        <div class="num-row"><span>Rotation</span><input type="range" id="capRot" min="-180" max="180" step="1"><input type="number" id="capRotN" min="-180" max="180" step="1"><span>°</span></div>
+        <div class="field">
+          <span class="label">Background</span>
+          <div class="seg" id="capBg"><button data-v="none">None</button><button data-v="dark">Dark</button><button data-v="light">Light</button></div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="capSync"> Sync styles: style changes apply to every text box</label>
+        <button class="small-btn" id="capApplyAll">Apply this style to all text boxes</button>
+        <p class="note">Styles cover font, size, colours, outline, alignment, bold, italic, uppercase, line height and background (not wording, position, width or rotation).</p>
+      </section>
+      <section class="panel" id="capBlurPanel" hidden>
+        <h2>Blur region</h2>
+        <div class="field">
+          <span class="label">Shape</span>
+          <div class="seg" id="capShape"><button data-v="circle">Circle</button><button data-v="rect">Rectangle</button></div>
+        </div>
+        <div class="num-row"><span>Centre X</span><input type="range" id="capBX" min="0" max="100" step="0.1"><input type="number" id="capBXN" min="0" max="100" step="0.1"><span>%</span></div>
+        <div class="num-row"><span>Centre Y</span><input type="range" id="capBY" min="0" max="100" step="0.1"><input type="number" id="capBYN" min="0" max="100" step="0.1"><span>%</span></div>
+        <div class="num-row"><span id="capBWLabel">Diameter</span><input type="range" id="capBW" min="1" max="100" step="0.5"><input type="number" id="capBWN" min="1" max="100" step="0.5"><span>%</span></div>
+        <div class="num-row" id="capBHRow"><span>Height</span><input type="range" id="capBH" min="1" max="100" step="0.5"><input type="number" id="capBHN" min="1" max="100" step="0.5"><span>%</span></div>
+        <p class="note" id="capBSizeNote"></p>
+        <div class="num-row"><span>Strength</span><input type="range" id="capBS" min="1" max="100" step="1"><input type="number" id="capBSN" min="1" max="100" step="1"><span>px</span></div>
+        <div class="num-row"><span>Edge fade</span><input type="range" id="capBF" min="0" max="95" step="1"><input type="number" id="capBFN" min="0" max="95" step="1"><span>%</span></div>
+      </section>
+    </aside>
+    <input type="file" id="capFile" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" hidden>
+  </main>
+
+  <template id="layerCardTpl">
+    <h2><span class="lc-title"></span><span class="lc-meta"></span></h2>
+    <div class="lc-empty">
+      <div class="drop mini">
+        <p>Drop a picture or video here</p>
+        <button class="small-btn lc-choose">Choose file</button>
+      </div>
+    </div>
+    <div class="lc-filled" hidden>
+      <div class="file-row">
+        <span class="fname"></span>
+        <button class="small-btn lc-replace">Replace</button>
+        <button class="small-btn ghost lc-clear" title="Remove">✕</button>
+      </div>
+      <div class="upload-progress lc-uploading" hidden><div class="bar"><span></span></div></div>
+      <p class="muted small lc-prep" hidden>Preparing a preview copy of this video…</p>
+      <canvas class="frame-view" title="Drag to move the framing, scroll to zoom"></canvas>
+      <div class="num-row"><span>Zoom</span><input type="range" class="lc-zoom" min="1" max="4" step="0.05"><input type="number" class="lc-zoomN" min="1" max="4" step="0.05"><span>×</span></div>
+      <div class="num-row"><span>Left ↔ right</span><input type="range" class="lc-px" min="0" max="100" step="0.5"><input type="number" class="lc-pxN" min="0" max="100" step="0.5"><span>%</span></div>
+      <div class="num-row"><span>Up ↕ down</span><input type="range" class="lc-py" min="0" max="100" step="0.5"><input type="number" class="lc-pyN" min="0" max="100" step="0.5"><span>%</span></div>
+      <button class="small-btn ghost lc-reset">Reset framing</button>
+      <div class="lc-video">
+        <span class="label">Trim</span>
+        <div class="trim-bar"><div class="trim-sel"></div><input type="range" class="lc-scrub" min="0" step="0.01" aria-label="Find a moment"></div>
+        <div class="trim-row">
+          <button class="small-btn lc-setstart">⇤ Start here</button>
+          <span class="lc-scrubtime"></span>
+          <button class="small-btn lc-setend">End here ⇥</button>
+        </div>
+        <div class="num-row">
+          <span>Start</span><input type="number" class="lc-ts" min="0" step="0.05"><span>s</span>
+          <span>End</span><input type="number" class="lc-te" min="0" step="0.05"><span>s</span>
+        </div>
+        <span class="label">When the clip ends</span>
+        <div class="seg lc-end">
+          <button data-v="loop">Loop<small>repeat the trim</small></button>
+          <button data-v="freeze">Freeze<small>last frame</small></button>
+          <button data-v="hide"><span class="lc-hide-label">Black</span><small>nothing shown</small></button>
+        </div>
+        <p class="note lc-note"></p>
+        <div class="num-row lc-sound"><span>Sound</span><input type="range" class="lc-vol" min="0" max="150" step="1"><input type="number" class="lc-volN" min="0" max="150" step="1"><span>%</span></div>
+        <p class="muted small lc-nosound" hidden>This video has no sound track.</p>
+      </div>
+    </div>
+    <input type="file" class="lc-file" accept="image/*,video/*" hidden>
+  </template>
+
   <div class="toast" id="toast" hidden></div>
   <script src="/static/app.js"></script>
+  <script src="/static/studio.js"></script>
+  <script src="/static/caption.js"></script>
 </body>
 </html>

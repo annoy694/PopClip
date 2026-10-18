@@ -72,6 +72,61 @@ Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> one frame, <kbd
 Projects are kept in `workspace/`, so you can close the app and continue later. Delete a project from the
 start page to free the space.
 
+## More tools
+
+The tabs at the top of the app hold three more tools.
+
+### Split Screen
+
+Puts two pictures or videos side by side in one video.
+
+- **Output shape:** 16:9 (1920×1080), 9:16, 1:1, 4:5, 21:9 or a custom size (320–3840 px).
+- **Framing for each side:** zoom (1–4×) and horizontal/vertical position. Drag in the small framing
+  view or directly on the preview, and scroll to zoom. Media always fills its side by cropping, never
+  with black bars.
+- **Middle edge:** a soft seam (0 for a hard edge) that fades transparency with a smooth curve.
+  Direction can be both sides cross-fading, the left fading over the right, or the reverse.
+- **Trimming:** a scrubber with **Start here / End here**, or type exact times.
+- **When a clip ends:** **Loop** (repeats exactly the trimmed section, sound included), **Freeze** on
+  the last frame, or go **Black**.
+- **Length:** by default the length of the shortest clip that doesn't loop, or set it manually
+  (1–120 s). Notes under each clip tell you if it will loop, freeze or go black, and for how long.
+- **Sound:** each video has its own volume (0–150%), so you can use one, the other, or mix both. Short
+  sound is padded with silence, so it never shortens the video. Videos with no sound track are
+  detected and marked.
+- **Preview:** one shared play/scrub bar keeps both sides in sync. Turn on **Sound** to hear the mix.
+- **Render:** 60 fps H.264 MP4 with AAC sound. It renders on your PC with ffmpeg, which is much faster
+  than in-browser rendering and isn't limited by browser memory.
+
+### Overlay
+
+Puts one picture or video on top of another. The controls are the same as Split Screen, plus:
+
+- **Top layer opacity** (0–100%).
+- **Blend mode:** normal, screen, lighten, add, overlay, multiply, darken or difference.
+- **Swap layers.**
+- Pictures with transparency (PNG) stay transparent.
+
+### Caption Maker
+
+Captions and blur regions on a picture, exported as PNG. It runs entirely in your browser.
+
+- **Text boxes:**
+  - drag to move and drag the handle to set the width; text wraps and the box grows downwards
+  - 15 fonts, bundled with the app so they work offline
+  - size, alignment, bold, italic, uppercase, text and outline colours, outline thickness, line height,
+    rotation, and a dark or light background
+- **Sync styles** makes style changes apply to every text box. **Apply this style to all** copies the
+  style once.
+- **Blur regions:** circle or rectangle, with position, size, strength and a soft edge fade. Sizes are
+  in % of the picture's shorter side. A blur region also blurs any captions underneath it.
+- **Editing:** undo/redo (Ctrl+Z / Ctrl+Shift+Z), duplicate (Ctrl+D), delete (Del), arrow-key nudging,
+  snapping to the centre and to other items with guide lines, and layer ordering.
+- **Export sizes:** original, 2× for sharper text (up to 3840 px), or a fixed long side of
+  1080/2160/3840 px. The exact pixel size is shown before you download.
+- **The preview matches the export.** Both are drawn by the same code and text is wrapped once at the
+  picture's own resolution, so the PNG matches the screen line for line.
+
 ## Command line
 
 ```bash

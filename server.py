@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from clipper.analyze import Analysis, analyze
+from clipper.compose import BLEND_MODES, FADES, ON_END, Composition, Layer, output_frames, render_composition
+from clipper.media import MediaStore
 from clipper.camera import FORMATS, FRAMINGS, SIZE_RANGE, SMOOTHNESS, target_boxes
 from clipper.project import MemberState, Project
 from clipper.render import render
@@ -55,25 +57,31 @@ def get_project(pid: str) -> Project:
         return _projects[pid]
 
 
-def start_job(kind: str, project: Project, fn) -> str:
+def start_job(kind: str, owner: str, fn, exclusive: bool = True) -> str:
+    """Run fn(progress) in the background. Exclusive jobs (analysis, renders) run one at a time."""
     jid = uuid.uuid4().hex[:8]
-    job = {"id": jid, "kind": kind, "project": project.id, "status": "queued", "progress": 0.0, "message": "Starting"}
+    job = {"id": jid, "kind": kind, "project": owner, "status": "queued", "progress": 0.0, "message": "Starting"}
     _jobs[jid] = job
 
     def progress(frac: float, msg: str) -> None:
         job["progress"], job["message"] = round(float(frac), 4), msg
 
+    def work() -> None:
+        job["status"] = "running"
+        try:
+            job["result"] = fn(progress)
+            job["status"] = "done"
+        except Exception as e:  # surfaced to the UI
+            traceback.print_exc()
+            job["status"], job["message"] = "error", f"{type(e).__name__}: {e}"
+
     def run() -> None:
+        if not exclusive:
+            return work()
         if _gpu_lock.locked():
             job["message"] = "Waiting for another video to finish"
         with _gpu_lock:
-            job["status"] = "running"
-            try:
-                job["result"] = fn(progress)
-                job["status"] = "done"
-            except Exception as e:  # surfaced to the UI
-                traceback.print_exc()
-                job["status"], job["message"] = "error", f"{type(e).__name__}: {e}"
+            work()
 
     threading.Thread(target=run, daemon=True).start()
     return jid
@@ -99,7 +107,7 @@ def run_analysis(p: Project) -> str:
         p.state["status"] = "ready"
         p.save()
 
-    jid = start_job("analyze", p, fn)
+    jid = start_job("analyze", p.id, fn)
     p.state["job"] = jid
     p.save()
     return jid
@@ -372,7 +380,7 @@ def start_render(pid: str, body: RenderRequest):
         render(a.info, cam, FORMATS[body.format], out, start, end, progress=progress)
         return {"file": out.name}
 
-    return {"job": start_job("render", p, fn)}
+    return {"job": start_job("render", p.id, fn)}
 
 
 @app.get("/api/jobs/{jid}")
@@ -387,6 +395,150 @@ def get_render(pid: str, name: str, request: Request):
     p = get_project(pid)
     f = (p.renders_dir / name).resolve()
     if f.parent != p.renders_dir.resolve() or not f.exists():
+        raise HTTPException(404, "No such file")
+    download = request.query_params.get("download") == "1"
+    return FileResponse(f, media_type="video/mp4", filename=name if download else None)
+
+
+# ---------------------------------------------------------------- studio: Split Screen and Overlay
+
+MEDIA = MediaStore(WORKSPACE / "media")
+STUDIO_RENDERS = WORKSPACE / "studio"
+
+
+async def _save_upload(file: UploadFile) -> Path:
+    WORKSPACE.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=WORKSPACE, suffix=".upload")
+    with os.fdopen(fd, "wb") as out:
+        while chunk := await file.read(1 << 20):
+            out.write(chunk)
+    return Path(tmp)
+
+
+def _media_json(info) -> dict:
+    d = info.public()
+    d["preview_ready"] = not MEDIA.needs_proxy(info) or info.playback != info.path
+    d["url"] = f"/api/media/{info.id}/file"
+    return d
+
+
+@app.post("/api/media")
+async def upload_media(file: UploadFile):
+    tmp = await _save_upload(file)
+    try:
+        info = MEDIA.add(tmp, file.filename or "upload")
+    except ValueError as e:
+        tmp.unlink(missing_ok=True)
+        raise HTTPException(400, str(e)) from None
+    if MEDIA.needs_proxy(info):  # e.g. HEVC phone videos: make a copy the browser can preview
+
+        def fn(progress):
+            progress(0.0, "Preparing a preview copy")
+            dst = str(Path(info.path).with_name("preview.mp4"))
+            make_browser_proxy(info.path, dst)
+            MEDIA.set_playback(info, dst)
+
+        start_job("preview", info.id, fn, exclusive=False)
+    return _media_json(info)
+
+
+@app.get("/api/media/{mid}")
+def media_info(mid: str):
+    return _media_json(MEDIA.get(mid))
+
+
+@app.get("/api/media/{mid}/file")
+def media_file(mid: str):
+    info = MEDIA.get(mid)
+    return FileResponse(info.playback)
+
+
+@app.delete("/api/media/{mid}")
+def delete_media(mid: str):
+    MEDIA.delete(mid)
+    return {"ok": True}
+
+
+class LayerIn(BaseModel):
+    media: str
+    pos_x: float = 0.5
+    pos_y: float = 0.5
+    zoom: float = 1.0
+    trim_start: float = 0.0
+    trim_end: float = 0.0
+    on_end: str = "freeze"
+    volume: float = 1.0
+
+
+class ComposeIn(BaseModel):
+    layout: str
+    width: int = 1920
+    height: int = 1080
+    layers: list[LayerIn]
+    auto_duration: bool = True
+    duration: float = 10.0
+    blend: float = 240.0
+    fade: str = "both"
+    opacity: float = 0.5
+    mode: str = "normal"
+
+
+def _composition(body: ComposeIn) -> Composition:
+    try:
+        layers = [
+            Layer(
+                MEDIA.get(ly.media),
+                ly.pos_x,
+                ly.pos_y,
+                ly.zoom,
+                ly.trim_start,
+                ly.trim_end,
+                ly.on_end,
+                float(np.clip(ly.volume, 0, 1.5)),
+            )
+            for ly in body.layers
+        ]
+        return Composition(
+            body.layout,
+            body.width,
+            body.height,
+            layers,
+            body.auto_duration,
+            body.duration,
+            body.blend,
+            body.fade,
+            body.opacity,
+            body.mode,
+        )
+    except KeyError:
+        raise HTTPException(404, "An uploaded file is missing; please upload it again.") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+@app.get("/api/compose/options")
+def compose_options():
+    return {"blend_modes": BLEND_MODES, "fades": FADES, "on_end": ON_END}
+
+
+@app.post("/api/compose/render")
+def compose_render(body: ComposeIn):
+    comp = _composition(body)
+    STUDIO_RENDERS.mkdir(parents=True, exist_ok=True)
+    out = STUDIO_RENDERS / f"{body.layout}-{time.strftime('%Y%m%d-%H%M%S')}.mp4"
+    seconds = output_frames(comp) / 60
+
+    def fn(progress):
+        render_composition(comp, out, progress=progress)
+        return {"file": out.name, "url": f"/api/compose/renders/{out.name}", "seconds": seconds}
+
+    return {"job": start_job("compose", body.layout, fn), "seconds": seconds}
+
+
+@app.get("/api/compose/renders/{name}")
+def compose_file(name: str, request: Request):
+    f = (STUDIO_RENDERS / name).resolve()
+    if f.parent != STUDIO_RENDERS.resolve() or not f.exists():
         raise HTTPException(404, "No such file")
     download = request.query_params.get("download") == "1"
     return FileResponse(f, media_type="video/mp4", filename=name if download else None)
