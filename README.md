@@ -34,7 +34,7 @@ python -m venv .venv
 ```
 
 **NVIDIA GPU:** install the CUDA build of PyTorch first (https://pytorch.org/get-started/locally/).
-Analysis then runs many times faster. On a 4-core CPU without a GPU, a 4-minute video takes about 12–15
+Analysis then runs many times faster. On a 4-core CPU without a GPU, a 4-minute video takes about 11
 minutes to analyse. That happens once per video, and everything after it is interactive.
 
 ## Using it
@@ -51,14 +51,23 @@ minutes to analyse. That happens once per video, and everything after it is inte
      "‹name› isn't visible here".
 
    Each fix is a hard constraint. Usually one or two fixes are enough for a whole video.
-4. **Choose the output.** Vertical 9:16 or horizontal 16:9. Framing: full body, knees up or waist up.
-   Camera: lively, smooth or very calm. Optionally set a clip range with **I** / **O** (or the
-   Start / End buttons).
+4. **Choose the output.**
+   - **Format:** vertical 9:16 or horizontal 16:9.
+   - **Framing:** full body, knees up, waist up, face (face and above), middle (chest to thighs) or legs
+     (waist down). Body parts come from the pose model's keypoints, so the face stays framed even when
+     the arms are raised.
+   - **Box size:** 50–200%. Bigger shows more around the chosen part, smaller zooms in closer. The
+     output keeps its 9:16 or 16:9 shape either way.
+   - **Camera:** lively, smooth or very calm.
+   - Optionally set a clip range with **I** / **O** (or the Start / End buttons).
+
+   If a close-up has to enlarge a low-resolution video a lot, the preview warns you that the clip will
+   look soft.
 5. The **Preview** panel plays the actual crop live. When it looks right, click **Render clip** and
    download the MP4.
 
 Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> one frame, <kbd>Shift</kbd>+arrows one second,
-<kbd>I</kbd>/<kbd>O</kbd> clip in/out, <kbd>Esc</kbd> close menu.
+<kbd>I</kbd>/<kbd>O</kbd> clip in/out, <kbd>[</kbd>/<kbd>]</kbd> box size, <kbd>Esc</kbd> close menu.
 
 Projects are kept in `workspace/`, so you can close the app and continue later. Delete a project from the
 start page to free the space.
@@ -75,6 +84,9 @@ python clip.py stage.mp4 --at 30 --person 4 -o fancam.mp4
 # horizontal, knees up, only 1:00–1:45, with an extra hint "at 1:12 she is person #2"
 python clip.py stage.mp4 --at 30 --person 4 --format horizontal --framing knees \
        --start 60 --end 105 --fix 72:2 -o clip.mp4
+
+# face close-up with a 30% bigger box
+python clip.py stage.mp4 --at 30 --person 4 --framing face --size 1.3 -o face.mp4
 ```
 
 The analysis is cached next to the video (`stage.mp4.clipper.npz`), so later runs skip it.
@@ -83,9 +95,9 @@ The analysis is cached next to the video (`stage.mp4.clipper.npz`), so later run
 
 | Step | File | What happens |
 |---|---|---|
-| Analyse | `clipper/analyze.py` | YOLO26 person detection on every frame, ByteTrack short-term tracking, camera-cut detection, and two appearance descriptors per person (deep features from a small CNN on head/torso/legs stripes, plus HSV outfit colour histograms). |
+| Analyse | `clipper/analyze.py` | YOLO26 pose model on every 2nd frame (person boxes plus 17 body keypoints), ByteTrack short-term tracking, camera-cut detection on every frame, and two appearance descriptors per person (deep features from a small CNN on head/torso/legs stripes, plus HSV outfit colour histograms). |
 | Identify | `clipper/identity.py` | Small per-video classifiers learn "this member versus everyone else on stage" from your click (plus the same person followed a few seconds before and after). A Viterbi search then chooses at most one box per frame, balancing appearance, plausible motion and the possibility that the member is absent. It self-trains outwards in time from your clicks, and your fixes are hard constraints. |
-| Camera | `clipper/camera.py` | Per shot, an L1-optimal camera path (as in YouTube's stabiliser, Grundmann et al. 2011). It minimises total movement, acceleration and jerk, keeps the member inside a dead zone, and uses a soft constraint so the whole body stays in frame. Zoom comes from a robust long-window body height. |
+| Camera | `clipper/camera.py` | Body landmarks for the chosen framing (keypoints, with standard body proportions filling any the model couldn't see), then per shot an L1-optimal camera path (as in YouTube's stabiliser, Grundmann et al. 2011). It minimises total movement, acceleration and jerk, keeps the member inside a dead zone, and uses a soft constraint so the whole body stays in frame. Zoom comes from a robust long-window body height. |
 | Render | `clipper/render.py` | Sub-pixel crop and resize for each frame (no 1-pixel jitter on slow pans), encoded to H.264 with the original audio. |
 
 ## Tips and limits

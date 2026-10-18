@@ -71,7 +71,8 @@ class _Features:
         return np.sort(s, axis=1)[:, -k:].mean(axis=1)
 
 
-def _iou(b: np.ndarray, others: np.ndarray) -> np.ndarray:
+def box_iou(b: np.ndarray, others: np.ndarray) -> np.ndarray:
+    """IoU of box b with each row of others (x1 y1 x2 y2)."""
     x1 = np.maximum(b[0], others[:, 0])
     y1 = np.maximum(b[1], others[:, 1])
     x2 = np.minimum(b[2], others[:, 2])
@@ -108,7 +109,7 @@ def _chain(a: Analysis, d: int, direction: int, max_frames: int, max_skip: int =
             if skipped > max_skip:
                 break
             continue
-        ious = _iou(box, a.det_box[sl])
+        ious = box_iou(box, a.det_box[sl])
         order = np.argsort(ious)[::-1]
         best = ious[order[0]]
         second = ious[order[1]] if len(order) > 1 else 0.0

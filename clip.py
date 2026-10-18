@@ -6,7 +6,8 @@
   # 2) follow person #3 (counted left to right at 0:12) and render a vertical fancam
   python clip.py stage.mp4 --at 12 --person 3 -o fancam.mp4
 
-  # options: --format vertical|horizontal  --framing full|knees|waist  --smoothness low|medium|high
+  # options: --format vertical|horizontal  --framing full|knees|waist|face|middle|legs
+  #          --size 0.5-2.0 (crop size multiplier)  --smoothness low|medium|high
   #          --start 30 --end 95 (seconds)   --fix 48:2 (at 0:48 it is person #2; repeatable)
 """
 
@@ -20,7 +21,7 @@ import cv2
 import numpy as np
 
 from clipper.analyze import Analysis, analyze
-from clipper.camera import FORMATS, FRAMINGS, SMOOTHNESS, plan_camera
+from clipper.camera import FORMATS, FRAMINGS, SIZE_RANGE, SMOOTHNESS, plan_camera
 from clipper.identity import Member, identify
 from clipper.render import render
 
@@ -48,13 +49,15 @@ def load_or_analyze(video: str) -> Analysis:
         a.info.path = str(video)
         return a
     return analyze(
-        video, cache, str(MODELS / "yolo26s.pt"), str(MODELS / "yolo11n-cls.pt"), progress=progress_printer("analyze")
+        video, cache, str(MODELS / "yolo26s-pose.pt"), str(MODELS / "yolo11n-cls.pt"), progress=progress_printer("analyze")
     )
 
 
 def people_at(a: Analysis, t: float) -> tuple[int, list[int]]:
-    """Frame index and its detections sorted left to right."""
-    f = int(np.clip(round(t * a.info.fps), 0, a.frame_count - 1))
+    """Frame index and its detections sorted left to right (nearest analysed frame to t)."""
+    f0 = int(np.clip(round(t * a.info.fps), 0, a.frame_count - 1))
+    near = [g for g in (f0, f0 - 1, f0 + 1, f0 - 2, f0 + 2) if 0 <= g < a.frame_count]
+    f = next((g for g in near if a.frame_slice(g).stop > a.frame_slice(g).start), f0)
     dets = list(range(*a.frame_slice(f).indices(len(a.det_box))))
     dets.sort(key=lambda d: a.det_box[d, 0] + a.det_box[d, 2])
     return f, dets
@@ -88,6 +91,9 @@ def main() -> None:
     ap.add_argument("--format", choices=FORMATS, default="vertical")
     ap.add_argument("--framing", choices=FRAMINGS, default="full")
     ap.add_argument("--smoothness", choices=SMOOTHNESS, default="medium")
+    ap.add_argument(
+        "--size", type=float, default=1.0, help=f"crop size multiplier {SIZE_RANGE[0]}-{SIZE_RANGE[1]} (>1 shows more)"
+    )
     ap.add_argument("--start", type=float, default=0.0, metavar="SEC")
     ap.add_argument("--end", type=float, default=None, metavar="SEC")
     ap.add_argument("-o", "--output", default=None)
@@ -110,7 +116,7 @@ def main() -> None:
     print("Tracking the member through the video…", file=sys.stderr)
     res = identify(a, Member("member", seeds=seeds))
     print(f"Visible in {100 * (res.det >= 0).mean():.0f}% of frames", file=sys.stderr)
-    cam = plan_camera(a, res, args.format, args.framing, args.smoothness)
+    cam = plan_camera(a, res, args.format, args.framing, args.smoothness, args.size)
     out = args.output or f"{Path(args.video).stem}_fancam_{args.format}.mp4"
     start = int(args.start * a.info.fps)
     end = int(args.end * a.info.fps) if args.end else None

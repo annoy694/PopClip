@@ -22,8 +22,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from clipper.analyze import analyze
-from clipper.camera import FORMATS, FRAMINGS, SMOOTHNESS, target_boxes
+from clipper.analyze import Analysis, analyze
+from clipper.camera import FORMATS, FRAMINGS, SIZE_RANGE, SMOOTHNESS, target_boxes
 from clipper.project import MemberState, Project
 from clipper.render import render
 from clipper.video import make_browser_proxy, needs_browser_proxy
@@ -31,7 +31,7 @@ from clipper.video import make_browser_proxy, needs_browser_proxy
 ROOT = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("CLIPPER_WORKSPACE", ROOT / "workspace"))
 MODELS = ROOT / "models"
-DET_WEIGHTS = os.environ.get("CLIPPER_DETECTOR", str(MODELS / "yolo26s.pt"))
+DET_WEIGHTS = os.environ.get("CLIPPER_DETECTOR", str(MODELS / "yolo26s-pose.pt"))
 REID_WEIGHTS = os.environ.get("CLIPPER_REID", str(MODELS / "yolo11n-cls.pt"))
 
 app = FastAPI(title="PopClip")
@@ -83,15 +83,19 @@ def run_analysis(p: Project) -> str:
     def fn(progress):
         p.state["status"] = "analyzing"
         p.save()
+        old = Analysis.load(p.analysis_file) if p.analysis_file.exists() else None
         try:
             a = analyze(str(p.source), p.analysis_file, DET_WEIGHTS, REID_WEIGHTS, progress=progress)
-            if needs_browser_proxy(a.info):
+            if needs_browser_proxy(a.info) and not (p.root / "preview.mp4").exists():
                 progress(1.0, "Making a browser-friendly preview copy")
                 make_browser_proxy(str(p.source), str(p.root / "preview.mp4"))
         except Exception:
             p.state["status"] = "failed"
             p.save()
             raise
+        p.reset_cache()
+        if old is not None:  # re-analysis: keep the user's clicks
+            p.remap_members(old, a)
         p.state["status"] = "ready"
         p.save()
 
@@ -305,21 +309,35 @@ def get_track(pid: str, mid: str):
 # ---------------------------------------------------------------- camera + render
 
 
-def _check_opts(fmt: str, framing: str, smoothness: str) -> None:
+def _check_opts(fmt: str, framing: str, smoothness: str, size: float) -> None:
     if fmt not in FORMATS or framing not in FRAMINGS or smoothness not in SMOOTHNESS:
         raise HTTPException(400, "Bad output options")
+    if not SIZE_RANGE[0] <= size <= SIZE_RANGE[1]:
+        raise HTTPException(400, f"Box size must be between {SIZE_RANGE[0]} and {SIZE_RANGE[1]}")
 
 
 @app.get("/api/projects/{pid}/camera")
-def camera(pid: str, member: str, format: str = "vertical", framing: str = "full", smoothness: str = "medium"):
+def camera(
+    pid: str,
+    member: str,
+    format: str = "vertical",
+    framing: str = "full",
+    smoothness: str = "medium",
+    size: float = 1.0,
+):
     p = get_project(pid)
     require_ready(p)
-    _check_opts(format, framing, smoothness)
+    _check_opts(format, framing, smoothness, size)
     t0 = time.time()
-    cam = p.camera(member, format, framing, smoothness)
+    cam = p.camera(member, format, framing, smoothness, size)
+    seen = target_boxes(p.analysis(), p.identity(member))[:, 0]
+    crop_h = cam.h[np.isfinite(seen)]
     return {
         "aspect": cam.aspect,
         "rects": [round(float(v), 1) for v in cam.rects().ravel()],
+        # How much the source gets enlarged; high values mean a soft-looking clip.
+        "upscale": round(FORMATS[format][1] / float(np.median(crop_h)), 1) if len(crop_h) else None,
+        "has_pose": p.analysis().det_kpts is not None,
         "seconds": round(time.time() - t0, 2),
     }
 
@@ -329,6 +347,7 @@ class RenderRequest(BaseModel):
     format: str = "vertical"
     framing: str = "full"
     smoothness: str = "medium"
+    size: float = 1.0
     start: int = 0
     end: int | None = None
 
@@ -337,7 +356,7 @@ class RenderRequest(BaseModel):
 def start_render(pid: str, body: RenderRequest):
     p = get_project(pid)
     require_ready(p)
-    _check_opts(body.format, body.framing, body.smoothness)
+    _check_opts(body.format, body.framing, body.smoothness, body.size)
     m = p.member(body.member)
     a = p.analysis()
     start = max(0, body.start)
@@ -349,7 +368,7 @@ def start_render(pid: str, body: RenderRequest):
 
     def fn(progress):
         progress(0.0, "Planning camera")
-        cam = p.camera(body.member, body.format, body.framing, body.smoothness)
+        cam = p.camera(body.member, body.format, body.framing, body.smoothness, body.size)
         render(a.info, cam, FORMATS[body.format], out, start, end, progress=progress)
         return {"file": out.name}
 

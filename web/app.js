@@ -18,8 +18,10 @@ const S = {
   tracks: {}, // member id -> {det: Int32Array, score: Float32Array, box: Array<[x1,y1,x2,y2]|null>}
   busy: {}, // member id -> true while the server is re-tracking
   focus: null,
-  opts: { format: 'vertical', framing: 'full', smoothness: 'medium' },
+  opts: { format: 'vertical', framing: 'full', smoothness: 'medium', size: 1 },
   cam: null, // Float32Array of x,y,w,h per frame for the focused member
+  camSize: 1, // box size the camera path was planned with (the slider rescales it live until re-planned)
+  camInfo: null, // {upscale, has_pose} for the current plan
   camKey: '',
   inF: null,
   outF: null,
@@ -181,6 +183,7 @@ async function openEditor(p) {
   S.members = p.members || [];
   S.tracks = {};
   S.cam = null;
+  S.camInfo = null;
   S.camKey = '';
   S.inF = S.outF = null;
   S.timelineDirty = true;
@@ -239,7 +242,9 @@ async function refreshCamera() {
   updateRenderButton();
   if (!mid || !S.tracks[mid]) {
     S.cam = null;
+    S.camInfo = null;
     S.camKey = '';
+    updateQualityHint();
     setupPreview();
     return;
   }
@@ -248,18 +253,59 @@ async function refreshCamera() {
   const key = `${q}#${m.seeds}:${m.not_dets}:${m.absent_frames}`;
   if (key === S.camKey && S.cam) return;
   const seq = ++camSeq;
+  const size = S.opts.size;
   $('previewNote').textContent = 'planning camera…';
   try {
     const r = await api('GET', `/api/projects/${S.pid}/camera?${q}`);
     if (seq !== camSeq) return; // a newer request superseded this one
     S.cam = Float32Array.from(r.rects);
+    S.camSize = size;
+    S.camInfo = r;
     S.camKey = key;
+    updateQualityHint();
   } catch (e) {
     if (seq === camSeq) toast(e.message);
   } finally {
     if (seq === camSeq) $('previewNote').textContent = '';
   }
   setupPreview();
+}
+
+// While the box-size slider moves, rescale the last planned path around its centres so the preview
+// reacts instantly; the exact plan replaces it a moment later.
+function camRect(f) {
+  const r = S.cam.subarray(4 * f, 4 * f + 4);
+  const k = S.opts.size / S.camSize;
+  if (Math.abs(k - 1) < 1e-3) return r;
+  const aspect = r[2] / r[3];
+  const hMax = Math.min(S.meta.height, S.meta.width / aspect);
+  const h = clamp(r[3] * k, Math.min(40, hMax), hMax);
+  const w = h * aspect;
+  const x = clamp(r[0] + r[2] / 2 - w / 2, 0, S.meta.width - w);
+  const y = clamp(r[1] + r[3] / 2 - h / 2, 0, S.meta.height - h);
+  return [x, y, w, h];
+}
+
+function updateQualityHint() {
+  const hint = $('qualityHint');
+  const info = S.camInfo;
+  hint.hidden = true;
+  if (!info || !S.cam) return;
+  if (!info.has_pose && ['face', 'middle', 'legs'].includes(S.opts.framing)) {
+    hint.innerHTML = 'This video was analysed before body-part tracking was added, so this framing uses estimated '
+      + 'body proportions. <a href="#" id="reanalyzeLink">Analyse it again</a> for precise framing (your members are kept).';
+    hint.hidden = false;
+    $('reanalyzeLink').onclick = async (e) => {
+      e.preventDefault();
+      if (!confirm('Analyse this video again? It takes as long as the first time.')) return;
+      await api('POST', `/api/projects/${S.pid}/reanalyze`);
+      openProject(S.pid);
+    };
+  } else if (info.upscale && info.upscale >= 3) {
+    hint.textContent = `The video is enlarged about ${info.upscale}× for this framing, so the clip will look soft. `
+      + 'A bigger box or a higher-resolution source looks sharper.';
+    hint.hidden = false;
+  }
 }
 
 // ------------------------------------------------------------------ members panel
@@ -384,7 +430,21 @@ function syncOptionButtons() {
     const key = seg.dataset.opt;
     for (const b of seg.querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === S.opts[key]);
   }
+  $('sizeSlider').value = Math.round(S.opts.size * 100);
+  $('sizeText').textContent = `${Math.round(S.opts.size * 100)}%`;
 }
+
+let sizeTimer = null;
+function setSize(size) {
+  S.opts.size = Math.round(clamp(size, 0.5, 2) * 100) / 100;
+  syncOptionButtons();
+  saveLocal();
+  clearTimeout(sizeTimer);
+  sizeTimer = setTimeout(refreshCamera, 350); // re-plan once the slider settles
+}
+$('sizeSlider').addEventListener('input', (e) => setSize(e.target.value / 100));
+$('sizeDown').onclick = () => setSize(S.opts.size - 0.1);
+$('sizeUp').onclick = () => setSize(S.opts.size + 0.1);
 
 for (const seg of document.querySelectorAll('.seg')) {
   seg.addEventListener('click', (e) => {
@@ -393,6 +453,7 @@ for (const seg of document.querySelectorAll('.seg')) {
     S.opts[seg.dataset.opt] = b.dataset.v;
     syncOptionButtons();
     saveLocal();
+    updateQualityHint();
     refreshCamera();
   });
 }
@@ -519,6 +580,8 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight') { e.preventDefault(); stepFrames(e.shiftKey ? Math.round(S.meta.fps) : 1); }
   else if (e.key === 'i' || e.key === 'I') setIn();
   else if (e.key === 'o' || e.key === 'O') setOut();
+  else if (e.key === '[') setSize(S.opts.size - 0.1);
+  else if (e.key === ']') setSize(S.opts.size + 0.1);
   else if (e.key === 'Escape') hidePopover();
 });
 
@@ -555,10 +618,15 @@ window.addEventListener('resize', layout);
 const toScreen = (x, y) => [S.view.ox + x * S.view.s, S.view.oy + y * S.view.s];
 
 function detsAt(f) {
+  // People are detected on every 2nd frame; in between, show and click the nearest analysed frame.
   if (!S.dets) return [];
-  const out = [];
-  for (let d = S.dets.off[f]; d < S.dets.off[f + 1]; d++) out.push(d);
-  return out;
+  for (const g of [f, f - 1, f + 1, f - 2, f + 2]) {
+    if (g < 0 || g >= S.meta.frames || S.dets.off[g] === S.dets.off[g + 1]) continue;
+    const out = [];
+    for (let d = S.dets.off[g]; d < S.dets.off[g + 1]; d++) out.push(d);
+    return out;
+  }
+  return [];
 }
 const detBox = (d) => [S.dets.box[4 * d], S.dets.box[4 * d + 1], S.dets.box[4 * d + 2], S.dets.box[4 * d + 3]];
 
@@ -590,7 +658,7 @@ function drawOverlay() {
 
   // Virtual camera window
   if (S.showCrop && S.cam && S.focus) {
-    const [x, y, w, h] = S.cam.subarray(4 * f, 4 * f + 4);
+    const [x, y, w, h] = camRect(f);
     const [sx, sy] = toScreen(x, y);
     const sw = w * S.view.s;
     const sh = h * S.view.s;
@@ -664,7 +732,7 @@ function setupPreview() {
 function drawPreview() {
   if (!S.cam || video.readyState < 2) return;
   const f = S.frame;
-  const [x, y, w, h] = S.cam.subarray(4 * f, 4 * f + 4);
+  const [x, y, w, h] = camRect(f);
   const k = video.videoWidth / S.meta.width; // the player may show a smaller preview copy
   pctx.imageSmoothingQuality = 'high';
   pctx.drawImage(video, x * k, y * k, w * k, h * k, 0, 0, preview.width, preview.height);
@@ -712,7 +780,7 @@ function drawTimelineBase() {
   c.fillStyle = 'rgba(255,255,255,0.35)';
   for (const cut of S.meta.cuts) c.fillRect(Math.round((cut / N) * W), 0, 1, H * 0.2);
   // user fixes
-  if (m) {
+  if (m && S.dets) {
     c.fillStyle = '#fff';
     const frames = [...m.seeds.map((d) => frameOfDet(d)), ...m.not_dets.map((d) => frameOfDet(d)), ...m.absent_frames];
     for (const f of frames) c.fillRect(Math.round((f / N) * W) - 1, barY - 4, 2, barH + 8);
@@ -879,6 +947,7 @@ document.addEventListener('click', (e) => {
 // ------------------------------------------------------------------ main loop
 
 function loop() {
+  requestAnimationFrame(loop); // schedule first: a drawing error must not stop the player
   if (S.meta && !$('editorView').hidden) {
     if (!hasRVFC || video.paused) S.frame = frameFromTime(video.currentTime);
     drawOverlay();
@@ -886,7 +955,6 @@ function loop() {
     drawTimeline();
     $('timeText').textContent = `${fmtTime(video.currentTime)} / ${fmtTime(S.meta.duration)}  ·  frame ${S.frame}`;
   }
-  requestAnimationFrame(loop);
 }
 
 route();

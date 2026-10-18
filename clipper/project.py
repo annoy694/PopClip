@@ -13,7 +13,7 @@ import numpy as np
 
 from .analyze import Analysis
 from .camera import CameraPath, plan_camera
-from .identity import IdentityResult, Member, identify
+from .identity import IdentityResult, Member, box_iou, identify
 from .identity import features_for
 
 PALETTE = ["#ff4d6d", "#4dabf7", "#ffd43b", "#69db7c", "#da77f2", "#ff922b", "#38d9a9", "#f783ac", "#a9e34b", "#748ffc"]
@@ -91,6 +91,34 @@ class Project:
     def ready(self) -> bool:
         return self.state.get("status") == "ready" and self.analysis_file.exists()
 
+    def reset_cache(self) -> None:
+        """Forget the loaded analysis and all tracking (after the video was analysed again)."""
+        with self.lock:
+            self._analysis = None
+            self._identity.clear()
+
+    def remap_members(self, old: Analysis, new: Analysis) -> None:
+        """Point every click at the matching box of a fresh analysis: detection ids change on re-analysis."""
+
+        def remap(d: int) -> int | None:
+            f, box = int(old.det_frame[d]), old.det_box[d]
+            best, best_iou = None, 0.3
+            for g in (f, f - 1, f + 1, f - 2, f + 2):  # boxes may now exist only on every other frame
+                sl = new.frame_slice(g) if 0 <= g < new.frame_count else slice(0, 0)
+                if sl.stop > sl.start:
+                    ious = box_iou(box, new.det_box[sl])
+                    k = int(np.argmax(ious))
+                    if ious[k] > best_iou:
+                        best, best_iou = sl.start + k, float(ious[k])
+                if best is not None and g == f:
+                    break
+            return best
+
+        for m in self.members():
+            m.seeds = [x for x in map(remap, m.seeds) if x is not None]
+            m.not_dets = [x for x in map(remap, m.not_dets) if x is not None]
+            self.put_member(m)
+
     def analysis(self) -> Analysis:
         with self.lock:
             if self._analysis is None:
@@ -152,8 +180,8 @@ class Project:
                 self._identity[mid] = identify(a, m.to_member(), others)
             return self._identity[mid]
 
-    def camera(self, mid: str, fmt: str, framing: str, smoothness: str) -> CameraPath:
-        return plan_camera(self.analysis(), self.identity(mid), fmt, framing, smoothness)
+    def camera(self, mid: str, fmt: str, framing: str, smoothness: str, size: float = 1.0) -> CameraPath:
+        return plan_camera(self.analysis(), self.identity(mid), fmt, framing, smoothness, size)
 
     # ---------- JSON views for the web UI
     def detections_json(self) -> dict:

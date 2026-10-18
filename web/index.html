@@ -78,7 +78,7 @@
         Scrub through the amber parts of the timeline. If the box is on the wrong person, click the right one and
         pick the name; if the member is hidden, click empty space and choose "not visible here".
         Keys: <kbd>Space</kbd> play, <kbd>←</kbd><kbd>→</kbd> frame, <kbd>Shift</kbd>+arrows 1 s,
-        <kbd>I</kbd>/<kbd>O</kbd> clip in/out.
+        <kbd>I</kbd>/<kbd>O</kbd> clip in/out, <kbd>[</kbd>/<kbd>]</kbd> box size.
       </div>
     </section>
 
@@ -100,10 +100,21 @@
         </div>
         <div class="field">
           <span class="label">Framing</span>
-          <div class="seg" data-opt="framing">
-            <button data-v="full" class="on">Full body</button>
-            <button data-v="knees">Knees up</button>
-            <button data-v="waist">Waist up</button>
+          <div class="seg grid3" data-opt="framing">
+            <button data-v="full" class="on">Full body<small>head to toe</small></button>
+            <button data-v="knees">Knees up<small>head to knees</small></button>
+            <button data-v="waist">Waist up<small>upper body</small></button>
+            <button data-v="face">Face<small>face &amp; above</small></button>
+            <button data-v="middle">Middle<small>chest to thighs</small></button>
+            <button data-v="legs">Legs<small>waist down</small></button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Box size <span id="sizeText">100%</span></span>
+          <div class="size-row">
+            <button class="small-btn" id="sizeDown" title="Smaller box, closer in ( [ )" aria-label="Smaller box">−</button>
+            <input type="range" id="sizeSlider" min="50" max="200" step="5" value="100" aria-label="Box size">
+            <button class="small-btn" id="sizeUp" title="Bigger box, more around them ( ] )" aria-label="Bigger box">+</button>
           </div>
         </div>
         <div class="field">
@@ -131,6 +142,7 @@
           <canvas id="preview"></canvas>
           <p class="preview-empty" id="previewEmpty">Pick a member to see the fancam preview</p>
         </div>
+        <p class="quality-hint small" id="qualityHint" hidden></p>
         <button class="primary wide" id="renderBtn" disabled>Render clip</button>
         <div class="render-progress" id="renderProgress" hidden>
           <div class="bar"><span id="renderBar"></span></div>
