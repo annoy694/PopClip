@@ -90,6 +90,23 @@ def _has_audio(path: str) -> bool:
     return "Audio:" in out.stderr
 
 
+def audio_codec(path: str) -> str:
+    """Codec name of the first audio stream ("" if none or unknown)."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        out = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name", "-of", "csv=p=0", path],
+            capture_output=True,
+            text=True,
+        )
+        return out.stdout.strip().splitlines()[0] if out.stdout.strip() else ""
+    out = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", path], capture_output=True, text=True)
+    for line in out.stderr.splitlines():
+        if "Audio:" in line:
+            return line.split("Audio:")[1].split()[0].strip(",")
+    return ""
+
+
 def probe(path: str) -> VideoInfo:
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
