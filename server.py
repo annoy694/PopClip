@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -30,7 +30,7 @@ from clipper.project import MemberState, Project
 from clipper.render import render
 from clipper.video import make_browser_proxy, needs_browser_proxy
 
-VERSION = "2.1"  # shown in the page header and the start-up message
+VERSION = "2.2"  # shown in the page header and the start-up message
 ROOT = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("CLIPPER_WORKSPACE", ROOT / "workspace"))
 MODELS = ROOT / "models"
@@ -128,7 +128,16 @@ def run_analysis(p: Project) -> str:
 
 @app.get("/")
 def index():
-    return FileResponse(ROOT / "web" / "index.html")
+    # Give every script and stylesheet a ?v=<last change> stamp: after an update the browser sees new
+    # addresses and cannot keep running a cached older copy of the app.
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+    def stamp(m: re.Match) -> str:
+        f = ROOT / "web" / m.group(1)
+        return f"/static/{m.group(1)}?v={int(f.stat().st_mtime) if f.exists() else VERSION}"
+
+    html = re.sub(r"/static/([\w./-]+\.(?:js|css))", stamp, html)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 # ---------------------------------------------------------------- projects

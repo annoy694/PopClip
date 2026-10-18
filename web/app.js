@@ -76,6 +76,7 @@ function show(view, tab = 'clipper') {
   for (const v of VIEWS) if ($(v)) $(v).hidden = v !== view;
   $('newVideoBtn').hidden = !['analyzeView', 'editorView'].includes(view);
   if (tab !== 'clipper') $('projectName').textContent = '';
+  else document.title = 'PopClip';
   for (const a of document.querySelectorAll('.tabs a')) a.classList.toggle('on', a.dataset.tab === tab);
 }
 
