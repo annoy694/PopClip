@@ -39,6 +39,15 @@ REID_WEIGHTS = os.environ.get("CLIPPER_REID", str(MODELS / "yolo11n-cls.pt"))
 app = FastAPI(title="PopClip")
 app.mount("/static", StaticFiles(directory=ROOT / "web"), name="static")
 
+
+@app.middleware("http")
+async def always_fresh_ui(request: Request, call_next):
+    """Make the browser re-check the page and its scripts, so an update shows up without a hard refresh."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 _projects: dict[str, Project] = {}
 _projects_lock = threading.Lock()
 _jobs: dict[str, dict] = {}
